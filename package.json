@@ -1,0 +1,14 @@
+{
+  "name": "yeelight-js",
+  "version": "0.1.0",
+  "description": "Yeelight JS Client",
+  "main": "index.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "author": "Nico Weiser",
+  "license": "MIT",
+  "dependencies": {
+    "colors": "^1.3.3"
+  }
+}
