@@ -12,103 +12,184 @@ var err = colors.red;
 var success = colors.green;
 
 /**
- * 
+ * Sends the given command request to the yeelight.
  */
-YeelightJS.prototype.sendCommand = function(bulb, request){
-    if(bulb.connected === false){
+YeelightJS.prototype.sendCommand = function(yeelight, request){
+    if(yeelight.connected === false){
         return;
     }
     console.log(request);
     var json = JSON.stringify(request).concat('\r\n');
-    bulb.socket.write(json);
+    yeelight.socket.write(json);
 }
 
-var requests = [];
+/**
+ * Enables the color flow for the given yeelight.
+ */
+YeelightJS.prototype.setColorFlow = function(yeelight, count, action, expression){
+
+    var request = {
+        id: yeelight.id,
+        method: 'start_cf',
+        params: [
+            count,
+            action,
+            expression
+        ]
+    };
+
+    this.sendCommand(yeelight, request);
+
+}
+
+YeelightJS.prototype.stopColorFlow = function(yeelight){
+    var request = {
+        id: yeelight.id,
+        method: 'stop_cf',
+        params: []
+    }
+
+    this.sendCommand(yeelight, request);
+}
 
 /**
- * 
+ * Sets the yeelight rgb value defined by the given rgb array.
+ */
+YeelightJS.prototype.setRGB = function(yeelight, rgb){
+    yeelight.rgb = rgb;
+    
+    var rgb_val = this.rgb2dec(rgb);
+
+    var request = {
+        id: yeelight.id,
+        method: 'set_rgb',
+        params: [rgb_val, 'smooth', 500]
+    };
+    this.sendCommand(yeelight, request);
+}
+
+/**
+ * Sets the yeelight brightness in percentage
+ */
+YeelightJS.prototype.setBrigtness = function(yeelight, brightness){
+    yeelight.bright = brightness;
+
+    var request = {
+        id: yeelight.id,
+        method: 'set_bright',
+        params: [brightness, 'smooth', 500]
+    }
+
+    this.sendCommand(yeelight, request);
+}
+
+/**
+ * Sets the yeelight power state.
+ */
+YeelightJS.prototype.setPower = function(yeelight, power){
+    yeelight.power = power;
+    var request = {
+        id: yeelight.id,
+        method: 'set_power',
+        params: [power, 'smooth', 500]
+    };
+    this.sendCommand(yeelight, request);
+}
+
+var stateFetches = [];
+
+/**
+ * Connects to the given yeelight identified by its hostaddress and a custom id.
  */
 YeelightJS.prototype.connect = function(host, id) {
     if(host){
-        var bulb = {
+        var yeelight = {
             socket: new net.Socket(),
             connected: false,
             host: host,
             id: id
         }
-        bulb.socket.on('data', function(data) {
+        yeelight.socket.on('data', function(data) {
             var json = JSON.parse(data.toString());
-            var request;
-            var tmp = requests.filter(e => e.id === json.id);
+            var fetch;
+            var tmp = stateFetches.filter(e => e.id === json.id);
             if(tmp.length > 0){
-                request = tmp[0];
+                fetch = tmp[0];
             }
-            requests.splice(requests.indexOf(request), 1);
-            handleData(json, request, bulb);
-            this.emit('response_received', json, bulb)
+            stateFetches.splice(stateFetches.indexOf(fetch), 1);
+            handleData(json, fetch, yeelight);
+            this.emit('response_received', json, yeelight)
         }.bind(this));
-        bulb.socket.on('close', function(err) {
-            bulb.socket = null;
-            bulb.connected = false;
-            this.emit('device_disconnected', bulb);
+        yeelight.socket.on('close', function(err) {
+            yeelight.socket = null;
+            yeelight.connected = false;
+            this.emit('device_disconnected', yeelight);
         });
-        bulb.socket.connect({port: options.PORT, host: bulb.host}, function() {
+        yeelight.socket.connect({port: options.PORT, host: yeelight.host}, function() {
             console.info(success(`Successfully connected to device: ${host}`));
-            bulb.connected = true;
-            this.emit('device_connected', bulb);
+            yeelight.connected = true;
+            this.emit('device_connected', yeelight);
         }.bind(this));
 
-        this.fetchCurrentState(bulb);
+        this.getState(yeelight);
     }
 }
 
-var handleData = function(json, request, bulb){
+var handleData = function(json, request, yeelight){
     if(request !== undefined && request.method === 'get_prop'){
         for(var i = 0; i < request.params.length; i++){
             var param_name = request.params[i];
             var param_value = json.result[i];
-            set_prop(param_name, param_value, bulb);
+            set_prop(param_name, param_value, yeelight);
         }
     }else{
         console.log(json);
     }
 }
 
-var set_prop = function(name, value, bulb) {
+var set_prop = function(name, value, yeelight) {
     switch (name) {
         case 'power':
-            bulb.power = value;
+            yeelight.power = value;
             break;
         case 'bright':
-            bulb.bright = value;
+            yeelight.bright = value;
             break;
         case 'ct':
-            bulb.ct = value;
+            yeelight.ct = value;
             break;
         case 'rgb':
-            bulb.rgb = calcRGB(value);
+            yeelight.rgb = DEC2RGB(value);
             break;
         case 'hue':
-            bulb.hue = value;
+            yeelight.hue = value;
             break;
         case 'sat':
-            bulb.sat = value;
+            yeelight.sat = value;
             break;
         case 'color_mode':
-            bulb.color_mode = value;
+            yeelight.color_mode = value;
             break;
         case 'flowing':
-            bulb.flowing = value;
+            yeelight.flowing = value;
             break;
         case 'name':
-            bulb.name = value;
+            yeelight.name = value;
             break;
         default:
             break;
     }
 }
 
-var calcRGB = function(rgbdec){
+
+/**
+ * Calculates the rgb decimal value from a given rgb array.
+ */
+YeelightJS.prototype.rgb2dec = function(rgb){
+    return (rgb[0] * 65536) + (rgb[1]*256) + rgb[2];
+}
+
+var DEC2RGB = function(rgbdec){
     return [
         (rgbdec >> 16) & 0xff,
         (rgbdec >> 8) & 0xff,
@@ -117,20 +198,20 @@ var calcRGB = function(rgbdec){
 }
 
 /**
- * 
+ * Fetches the current state for the given yeelight.
  */
-YeelightJS.prototype.fetchCurrentState = function(bulb) {
-    if(bulb.connected === false && bulb.socket === null){
-        console.err(err(`Disconnected device: ${bulb.host}`));
+YeelightJS.prototype.getState = function(yeelight) {
+    if(yeelight.connected === false && yeelight.socket === null){
+        console.err(err(`Disconnected device: ${yeelight.host}`));
     }
     var request = {
-        id: bulb.id,
+        id: yeelight.id,
         method: 'get_prop',
         params: ['power','bright','ct','rgb','hue','sat','color_mode','flowing','name']
     }
-    requests.push(request);
+    stateFetches.push(request);
     var json = JSON.stringify(request).concat('\r\n');
-    bulb.socket.write(json);
+    yeelight.socket.write(json);
 }
 
 const options = {
