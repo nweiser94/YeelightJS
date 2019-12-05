@@ -1,1 +1,1 @@
-# YeelightJS
+# YeelightJS [![Build Status](https://travis-ci.org/nweiser94/YeelightJS.svg?branch=master)](https://travis-ci.org/nweiser94/YeelightJS)
